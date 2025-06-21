@@ -11,7 +11,7 @@ questions = [
     ('野菜を意識して食べていますか？', 'L', 'D')
 ]
 
-# セッション変数
+# セッション変数の初期化
 if 'step' not in st.session_state:
     st.session_state.step = 0
     st.session_state.VGTI = ""
@@ -42,21 +42,21 @@ ooo = {'REFD', 'IHFL', 'REBL', 'RHBD'}
 iine = {'IEFL', 'IHBL', 'REBD', 'IHFD'}
 eee = {'IEBL', 'IEBD', 'IEFD', 'IHBD'}
 
-
 # 質問を1問ずつ表示
 if st.session_state.step < len(questions):
     q, y, n = questions[st.session_state.step]
     st.write(q)
     col1, col2 = st.columns(2)
-    with col1:
-        if st.button("はい", key=f"yes_{st.session_state.step}"):
-            st.session_state.VGTI += y
-            st.session_state.step += 1
-    with col2:
-        if st.button("いいえ", key=f"no_{st.session_state.step}"):
-            st.session_state.VGTI += n
-            st.session_state.step += 1
 
+    if col1.button("はい", key=f"yes_{st.session_state.step}"):
+        st.session_state.VGTI += y
+        st.session_state.step += 1
+        st.rerun()  # 画面を即更新
+
+    if col2.button("いいえ", key=f"no_{st.session_state.step}"):
+        st.session_state.VGTI += n
+        st.session_state.step += 1
+        st.rerun()  # 画面を即更新
 
 # 結果表示
 elif st.session_state.step == len(questions):
@@ -76,5 +76,4 @@ elif st.session_state.step == len(questions):
 
     if VGTI in image_VGTI:
         st.image(image_VGTI[VGTI], width=300, caption=f"{VGTI}のイメージ")
-
 
