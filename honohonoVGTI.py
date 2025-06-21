@@ -11,9 +11,10 @@ questions = [
     ('野菜を意識して食べていますか？', 'L', 'D')
 ]
 
-# セッション変数の初期化
+# セッション状態の初期化
 if 'step' not in st.session_state:
     st.session_state.step = 0
+if 'VGTI' not in st.session_state:
     st.session_state.VGTI = ""
 
 # 画像ファイルとVGTIタイプの対応
@@ -42,38 +43,60 @@ ooo = {'REFD', 'IHFL', 'REBL', 'RHBD'}
 iine = {'IEFL', 'IHBL', 'REBD', 'IHFD'}
 eee = {'IEBL', 'IEBD', 'IEFD', 'IHBD'}
 
-# 質問を1問ずつ表示
-if st.session_state.step < len(questions):
+# 質問表示と回答処理を関数にまとめる
+def show_question():
     q, y, n = questions[st.session_state.step]
     st.write(q)
     col1, col2 = st.columns(2)
+    with col1:
+        if st.button("はい", key=f"yes_{st.session_state.step}"):
+            st.session_state.VGTI += y
+            st.session_state.step += 1
+            return True  # 早期リターンして再描画へ
+    with col2:
+        if st.button("いいえ", key=f"no_{st.session_state.step}"):
+            st.session_state.VGTI += n
+            st.session_state.step += 1
+            return True
+    return False
 
-    if col1.button("はい", key=f"yes_{st.session_state.step}"):
-        st.session_state.VGTI += y
-        st.session_state.step += 1
-        st.rerun()  # 画面を即更新
-
-    if col2.button("いいえ", key=f"no_{st.session_state.step}"):
-        st.session_state.VGTI += n
-        st.session_state.step += 1
-        st.rerun()  # 画面を即更新
-
-# 結果表示
-elif st.session_state.step == len(questions):
+def show_result():
     VGTI = st.session_state.VGTI
     st.header(f"あなたのVGTIタイプは: {VGTI} 🌱")
 
     if VGTI in wao:
-        st.success('ベジレベル★★★★　1日3食食べていて素晴らしい！周りの人にも野菜摂取を勧めてみましょう！')
+        st.success('ベジレベル★★★★\n1日3食食べていて素晴らしい！周りの人にも野菜摂取を勧めてみましょう！')
     elif VGTI in ooo:
-        st.info('ベジレベル★★★　食事への意識が高いですね!これからも毎日の野菜摂取を続けましょう！')
+        st.info('ベジレベル★★★\n食事への意識が高いですね!これからも毎日の野菜摂取を続けましょう！')
     elif VGTI in iine:
-        st.warning('ベジレベル★★　3食の意識・野菜摂取の意識向上を目指しましょう！')
+        st.warning('ベジレベル★★\n3食の意識・野菜摂取の意識向上を目指しましょう！')
     elif VGTI in eee:
-        st.error('ベジレベル★　危険度MAX！！まずは１日３食規則正しい生活から！トマトケチャップや野菜ジュースなど手軽に摂れる野菜を取り入れてみましょう！')
+        st.error('ベジレベル★\n危険度MAX！！まずは１日３食規則正しい生活から！トマトケチャップや野菜ジュースなど手軽に摂れる野菜を取り入れてみましょう！')
     else:
         st.error("ERROR: 不正な診断コードです")
 
     if VGTI in image_VGTI:
-        st.image(image_VGTI[VGTI], width=300, caption=f"{VGTI}のイメージ")
+        st.markdown(
+            f"""<div style="text-align: center;">
+                <img src="https://raw.githubusercontent.com/miku2846/honohonoVGTI/main/{image_VGTI[VGTI]}" width="300" />
+                <p>{VGTI}のイメージ</p>
+            </div>""",
+            unsafe_allow_html=True
+        )
+    
+    # リトライボタンを右側に配置
+    col1, col2, col3 = st.columns([3,1,1])
+    with col3:
+        if st.button("もう一度ベジる🥦>>>"):
+            st.session_state.step = 0
+            st.session_state.VGTI = ""
+            return True
+    return False
 
+# メイン処理
+if st.session_state.step < len(questions):
+    if show_question():
+        st.rerun()
+else:
+    if show_result():
+        st.rerun()
