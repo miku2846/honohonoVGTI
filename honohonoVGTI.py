@@ -2,6 +2,7 @@ import streamlit as st
 import gspread
 from datetime import datetime
 import json
+import pytz
 
 # --- 絵文字アニメーション用のCSS ---
 st.markdown(
@@ -51,13 +52,12 @@ gc = get_gspread_client()
 
 try:
     spreadsheet = gc.open_by_key(GOOGLE_SHEET_ID)
-    worksheet = spreadsheet.worksheet('VGTI診断結果') 
+    # ここでworksheetを直接指定しない。日付によって動的に決定するため。
+    # worksheet = spreadsheet.worksheet('VGTI診断結果') # この行を削除またはコメントアウト
 except gspread.exceptions.SpreadsheetNotFound:
     st.error(f"指定されたIDのGoogleスプレッドシートが見つかりません。IDを確認してください: {GOOGLE_SHEET_ID}")
     st.stop()
-except gspread.exceptions.WorksheetNotFound:
-    st.error(f"指定されたワークシート名 'VGTI診断結果' が見つかりません。シート名を確認してください。")
-    st.stop()
+# WorksheetNotFoundはここで捕捉しない。動的にシートを作成するため。
 except Exception as e:
     st.error(f"スプレッドシートへのアクセス中にエラーが発生しました。権限やIDを確認してください: {e}")
     st.stop()
@@ -150,7 +150,26 @@ else:
     # --- Google Sheetsへの結果書き込み処理 ---
     if not st.session_state.result_logged:
         try:
-            current_date_str = datetime.now().strftime("%Y-%m-%d") # 日付のみ
+            tokyo = pytz.timezone("Asia/Tokyo")
+            now_tokyo = datetime.now(tokyo)
+            current_date_str = now_tokyo.strftime("%Y-%m-%d") # シート名に年を含める (例: 2025-06-24)
+
+            # シート名を日付にする
+            sheet_name = current_date_str 
+
+            # シートを取得、存在しない場合は新規作成
+            try:
+                worksheet = spreadsheet.worksheet(sheet_name)
+                # 新しいシートが作成された際にキャッシュをクリアする
+                get_all_spreadsheet_data.clear() 
+            except gspread.exceptions.WorksheetNotFound:
+                # シートが存在しない場合は新規作成
+                # デフォルトでヘッダー行用の1行とデータ書き込み用の行が確保される
+                worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=3)
+                # ヘッダー行を追加
+                worksheet.append_row(["日付", "VGTIタイプ", "人数"])
+                # 新しく作成されたシートのデータもキャッシュから取得し直す
+                get_all_spreadsheet_data.clear() 
 
             # スプレッドシートの全データをキャッシュから取得
             all_records = get_all_spreadsheet_data(worksheet)
@@ -164,12 +183,10 @@ else:
             
             for i, row in enumerate(data_rows):
                 # 日付とタイプがあることを確認
-                # スプレッドシートの行の長さが2以上であることも確認（日付とVGTIタイプが存在するため）
                 if len(row) > 1 and row[0] == current_date_str and row[1] == final_VGTI:
                     found_row_index = i + 2 # スプレッドシートの行番号 (ヘッダー行1 + 0始まりインデックス)
                     # 既存の人数カウントを取得 (C列、インデックスは2)
                     try:
-                        # row[2]が存在しない場合に備えて、IndexErrorも捕捉
                         current_count = int(row[2]) 
                     except (ValueError, IndexError):
                         current_count = 0 
@@ -179,7 +196,7 @@ else:
 
             # 書き込むデータ (ヘッダー: 日付, VGTIタイプ, 人数)
             data_to_write = [
-                current_date_str, 
+                current_date_str, # シート名と同じ日付をセルにも書き込む
                 final_VGTI,
                 new_count 
             ]
