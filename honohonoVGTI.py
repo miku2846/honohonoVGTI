@@ -52,12 +52,9 @@ gc = get_gspread_client()
 
 try:
     spreadsheet = gc.open_by_key(GOOGLE_SHEET_ID)
-    # ここでworksheetを直接指定しない。日付によって動的に決定するため。
-    # worksheet = spreadsheet.worksheet('VGTI診断結果') # この行を削除またはコメントアウト
 except gspread.exceptions.SpreadsheetNotFound:
     st.error(f"指定されたIDのGoogleスプレッドシートが見つかりません。IDを確認してください: {GOOGLE_SHEET_ID}")
     st.stop()
-# WorksheetNotFoundはここで捕捉しない。動的にシートを作成するため。
 except Exception as e:
     st.error(f"スプレッドシートへのアクセス中にエラーが発生しました。権限やIDを確認してください: {e}")
     st.stop()
@@ -152,7 +149,11 @@ else:
         try:
             tokyo = pytz.timezone("Asia/Tokyo")
             now_tokyo = datetime.now(tokyo)
-            current_date_str = now_tokyo.strftime("%Y-%m-%d") # シート名に年を含める (例: 2025-06-24)
+            # テスト用に日付を強制的に進める場合は、以下の行をコメントアウト解除
+            # from datetime import timedelta # これもファイルの先頭に移動済み
+            # now_tokyo = now_tokyo + timedelta(days=1) 
+            
+            current_date_str = now_tokyo.strftime("%Y-%m-%d") 
 
             # シート名を日付にする
             sheet_name = current_date_str 
@@ -164,10 +165,10 @@ else:
                 get_all_spreadsheet_data.clear() 
             except gspread.exceptions.WorksheetNotFound:
                 # シートが存在しない場合は新規作成
-                # デフォルトでヘッダー行用の1行とデータ書き込み用の行が確保される
-                worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=3)
-                # ヘッダー行を追加
-                worksheet.append_row(["日付", "VGTIタイプ", "人数"])
+                # ヘッダー行なしでデータ用2列のシートを確保 (VGTIタイプ, 人数)
+                worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=2) 
+                # ヘッダー行を追加 (日付列は不要になったので削除)
+                worksheet.append_row(["VGTIタイプ", "人数"]) # ★ここを修正★
                 # 新しく作成されたシートのデータもキャッシュから取得し直す
                 get_all_spreadsheet_data.clear() 
 
@@ -182,28 +183,28 @@ else:
             current_count = 0 
             
             for i, row in enumerate(data_rows):
-                # 日付とタイプがあることを確認
-                if len(row) > 1 and row[0] == current_date_str and row[1] == final_VGTI:
+                # ★ここを修正★ row[0]がVGTIタイプになった
+                # VGTIタイプがあることを確認 (以前のrow[1]がrow[0]になる)
+                if len(row) > 0 and row[0] == final_VGTI: # 以前はrow[1] == final_VGTI
                     found_row_index = i + 2 # スプレッドシートの行番号 (ヘッダー行1 + 0始まりインデックス)
-                    # 既存の人数カウントを取得 (C列、インデックスは2)
+                    # 既存の人数カウントを取得 (C列、インデックスは2 → 新しいシートではB列、インデックスは1)
                     try:
-                        current_count = int(row[2]) 
+                        current_count = int(row[1]) # ★ここを修正★ 以前はrow[2]
                     except (ValueError, IndexError):
                         current_count = 0 
                     break
             
             new_count = current_count + 1
 
-            # 書き込むデータ (ヘッダー: 日付, VGTIタイプ, 人数)
+            # 書き込むデータ (ヘッダー: VGTIタイプ, 人数)
             data_to_write = [
-                current_date_str, # シート名と同じ日付をセルにも書き込む
-                final_VGTI,
+                final_VGTI, # ★ここを修正★ 日付はシート名にあるので削除
                 new_count 
             ]
 
             if found_row_index != -1:
-                # 既存の行を更新 (C列の人数だけ更新)
-                worksheet.update_cell(found_row_index, 3, new_count) # 行番号, 列番号(3はC列), 値
+                # 既存の行を更新 (C列の人数だけ更新 → 新しいシートではB列)
+                worksheet.update_cell(found_row_index, 2, new_count) # ★ここを修正★ 列番号(2はB列)
             else:
                 # 新しい行を追加
                 worksheet.append_row(data_to_write)
