@@ -73,9 +73,13 @@ else:
         <p>{VGTI}のイメージ</p></div>""", unsafe_allow_html=True)
 
     # 再診断ボタンを右寄せで表示
-    col1, col2, col3 = st.columns([3, 1, 1])
-    with col3:
+    col1, col2 = st.columns([9, 1])  # col1を広く、col2を狭く
+    with col2:
         if st.button("もう一度ベジる🥦>>>"):
             st.session_state.step = 0
             st.session_state.VGTI = ""
             st.rerun()
+
+
+
+
