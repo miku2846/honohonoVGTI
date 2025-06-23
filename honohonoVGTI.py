@@ -62,6 +62,13 @@ except Exception as e:
     st.error(f"スプレッドシートへのアクセス中にエラーが発生しました。権限やIDを確認してください: {e}")
     st.stop()
 
+# --- スプレッドシートのデータをキャッシュして読み込む関数 ---
+# 1時間(3600秒)ごとにキャッシュをクリア
+@st.cache_data(ttl=3600)
+def get_all_spreadsheet_data(_worksheet_obj): # 引数名を_で始める
+    """スプレッドシートの全データをキャッシュして取得する関数"""
+    return _worksheet_obj.get_all_values()
+
 # 質問と選択肢・結果の対応
 questions = [
     ('普段の生活リズムについて教えてください。',
@@ -145,8 +152,8 @@ else:
         try:
             current_date_str = datetime.now().strftime("%Y-%m-%d") # 日付のみ
 
-            # スプレッドシートの全データを取得（ヘッダー行を含む）
-            all_records = worksheet.get_all_values()
+            # スプレッドシートの全データをキャッシュから取得
+            all_records = get_all_spreadsheet_data(worksheet)
             
             # ヘッダー行を除いた実際のデータ
             data_rows = all_records[1:] if len(all_records) > 1 else []
@@ -157,10 +164,12 @@ else:
             
             for i, row in enumerate(data_rows):
                 # 日付とタイプがあることを確認
+                # スプレッドシートの行の長さが2以上であることも確認（日付とVGTIタイプが存在するため）
                 if len(row) > 1 and row[0] == current_date_str and row[1] == final_VGTI:
-                    found_row_index = i + 2 # スプレッドシートの行番号 (ヘッダー+0始まりインデックス)
+                    found_row_index = i + 2 # スプレッドシートの行番号 (ヘッダー行1 + 0始まりインデックス)
                     # 既存の人数カウントを取得 (C列、インデックスは2)
                     try:
+                        # row[2]が存在しない場合に備えて、IndexErrorも捕捉
                         current_count = int(row[2]) 
                     except (ValueError, IndexError):
                         current_count = 0 
@@ -178,11 +187,9 @@ else:
             if found_row_index != -1:
                 # 既存の行を更新 (C列の人数だけ更新)
                 worksheet.update_cell(found_row_index, 3, new_count) # 行番号, 列番号(3はC列), 値
-                # st.success(f"診断結果（{final_VGTI}）の人数を更新しました！ (現在の人数: {new_count})") # この行を削除
             else:
                 # 新しい行を追加
                 worksheet.append_row(data_to_write)
-                # st.success("診断結果をスプレッドシートに保存しました！") # この行を削除
 
             st.session_state.result_logged = True
             
@@ -220,4 +227,6 @@ else:
         st.session_state.VGTI = ""
         st.session_state.answers_list = []
         st.session_state.result_logged = False
+        # キャッシュをクリアする
+        get_all_spreadsheet_data.clear() 
         st.rerun()
