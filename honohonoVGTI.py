@@ -1,24 +1,27 @@
 import streamlit as st
+import gspread
+from datetime import datetime
+import json
 
 # --- 絵文字アニメーション用のCSS ---
 st.markdown(
     """
     <style>
     .emoji {
-        display: inline-block; /* インライン要素をブロック要素のように扱いつつ、テキストの流れを維持 */
+        display: inline-block;
     }
 
     .wiggle {
-        animation: wiggle 0.5s infinite alternate; /* wiggleアニメーションを0.5秒間隔で無限に繰り返す */
+        animation: wiggle 0.5s infinite alternate;
     }
 
     @keyframes wiggle {
-        0% { transform: rotate(-5deg); }   /* 開始時: -5度回転 */
-        100% { transform: rotate(5deg); }  /* 終了時: 5度回転 */
+        0% { transform: rotate(-5deg); }
+        100% { transform: rotate(5deg); }
     }
     </style>
     """,
-    unsafe_allow_html=True, # HTMLタグを安全でないものとして許可（<style>タグを使うため必須）
+    unsafe_allow_html=True,
 )
 
 # --- アニメーションする絵文字を含むタイトル ---
@@ -28,10 +31,38 @@ st.markdown(
     f'VGTI 診断 '
     f'<span class="emoji wiggle">🍆</span>'
     f'</h1>',
-    unsafe_allow_html=True, # HTMLタグを安全でないものとして許可
+    unsafe_allow_html=True,
 )
 
-# 質問と選択肢・結果の対応（[質問文, 選択肢リスト, 選択肢ごとのタイプ文字])
+# --- Google Sheets 接続設定 ---
+GOOGLE_SHEET_ID = "1t6--DOwsN4Te47Yv6QqsZDWRLGfY4S7UVi78BAD5JHI" 
+
+@st.cache_resource
+def get_gspread_client():
+    try:
+        credentials_dict = st.secrets["gsheets_service_account"]
+        gc = gspread.service_account_from_dict(credentials_dict)
+        return gc
+    except Exception as e:
+        st.error(f"Google Sheetsの認証に失敗しました。認証情報をご確認ください: {e}")
+        st.stop()
+
+gc = get_gspread_client()
+
+try:
+    spreadsheet = gc.open_by_key(GOOGLE_SHEET_ID)
+    worksheet = spreadsheet.worksheet('VGTI診断結果') 
+except gspread.exceptions.SpreadsheetNotFound:
+    st.error(f"指定されたIDのGoogleスプレッドシートが見つかりません。IDを確認してください: {GOOGLE_SHEET_ID}")
+    st.stop()
+except gspread.exceptions.WorksheetNotFound:
+    st.error(f"指定されたワークシート名 'VGTI診断結果' が見つかりません。シート名を確認してください。")
+    st.stop()
+except Exception as e:
+    st.error(f"スプレッドシートへのアクセス中にエラーが発生しました。権限やIDを確認してください: {e}")
+    st.stop()
+
+# 質問と選択肢・結果の対応
 questions = [
     ('普段の生活リズムについて教えてください。',
      ['1日3食きちんと食べている', '1日1食or2食になってしまう...(食事の時間が不規則になりがち)'],
@@ -51,61 +82,116 @@ questions = [
 if 'step' not in st.session_state:
     st.session_state.step = 0
     st.session_state.VGTI = ""
-    st.session_state.answers = {} # 各質問の状態を保持するための辞書を初期化
+    st.session_state.answers_list = []
+    st.session_state.result_logged = False 
 
-step = st.session_state.step
-
-if step < len(questions):
-    q, options, codes = questions[step]
-    st.subheader(f"Q{step + 1}. {q}")
+# 質問の表示と回答の収集
+if st.session_state.step < len(questions):
+    q_data = questions[st.session_state.step]
+    q_text, options, codes = q_data[0], q_data[1], q_data[2]
+    
+    st.subheader(f"Q{st.session_state.step + 1}. {q_text}")
         
-    # ここを変更！「選択してください」のダミー選択肢を削除
-    # display_options = ["選択してください"] + options は不要に
-
-    # ユーザーが以前に選択した回答があれば、それを初期値にする
-    # なければ、st.radio のデフォルト挙動（リストの最初の要素が選択される）になる
     default_index = 0
-    if f"q{step}" in st.session_state.answers:
+    if st.session_state.step < len(st.session_state.answers_list):
         try:
-            # 以前の選択肢のインデックスを直接使う
-            default_index = options.index(st.session_state.answers[f"q{step}"])
+            default_index = options.index(st.session_state.answers_list[st.session_state.step])
         except ValueError:
             default_index = 0
 
-    # ここを変更！display_options ではなく options を直接渡す
-    choice = st.radio("選択してください", options, index=default_index, key=f"q{step}_radio")
+    choice = st.radio("選択してください", options, index=default_index, key=f"q{st.session_state.step}_radio")
 
-   
-    if st.button("次へ ▶"): # ここを変更！条件分岐をシンプルに
-        # アスタリスクを除いた元の選択肢のテキストを使ってインデックスを取得
-        original_choice_text = choice.replace(" *", "")
-        selected_index_in_original_options = options.index(original_choice_text) # ここはそのまま
-        st.session_state.VGTI += codes[selected_index_in_original_options]
+    if st.button("次へ ▶"): 
+        selected_index = options.index(choice)
+        st.session_state.VGTI += codes[selected_index]
+
+        if st.session_state.step < len(st.session_state.answers_list):
+            st.session_state.answers_list[st.session_state.step] = choice
+        else:
+            st.session_state.answers_list.append(choice)
+
         st.session_state.step += 1
-        st.session_state.answers[f"q{step}"] = original_choice_text
         st.rerun()
 
-# 結果表示（省略。変更なし）
+# 結果表示
 else:
-    VGTI = st.session_state.VGTI
-    st.header(f"あなたのVGTIタイプは: {VGTI} 🌱")
+    final_VGTI = st.session_state.VGTI
+    st.header(f"あなたのVGTIタイプは: {final_VGTI} 🌱")
 
     wao = {'RHFL', 'RHFD', 'RHBL', 'REFL'}
     ooo = {'REFD', 'IHFL', 'REBL', 'RHBD'}
     iine = {'IEFL', 'IHBL', 'REBD', 'IHFD'}
     eee = {'IEBL', 'IEBD', 'IEFD', 'IHBD'}
 
-    if VGTI in wao:
-        st.success('ベジレベル★★★★\n1日3食食べていて素晴らしい！周りの人にも野菜摂取を勧めてみましょう！')
-    elif VGTI in ooo:
-        st.info('ベジレベル★★★\n食事への意識が高いですね!これからも毎日の野菜摂取を続けましょう！')
-    elif VGTI in iine:
-        st.warning('ベジレベル★★\n3食の意識・野菜摂取の意識向上を目指しましょう！')
-    elif VGTI in eee:
-        st.error('ベジレベル★\n危険度MAX！！まずは１日３食規則正しい生活から！')
+    result_message = ""
+    if final_VGTI in wao:
+        result_message = 'ベジレベル★★★★\n1日3食食べていて素晴らしい！周りの人にも野菜摂取を勧めましょう！'
+        st.success(result_message)
+    elif final_VGTI in ooo:
+        result_message = 'ベジレベル★★★\n食事への意識が高いですね!これからも毎日の野菜摂取を続けましょう！'
+        st.info(result_message)
+    elif final_VGTI in iine:
+        result_message = 'ベジレベル★★\n3食の意識・野菜摂取の意識向上を目指しましょう！'
+        st.warning(result_message)
+    elif final_VGTI in eee:
+        result_message = 'ベジレベル★\n危険度MAX！！まずは１日３食規則正しい生活から！'
+        st.error(result_message)
     else:
-        st.error("ERROR: 不正な診断コードです")
+        result_message = "ERROR: 不正な診断コードです"
+        st.error(result_message)
 
+    # --- Google Sheetsへの結果書き込み処理 ---
+    if not st.session_state.result_logged:
+        try:
+            current_date_str = datetime.now().strftime("%Y-%m-%d") # 日付のみ
+
+            # スプレッドシートの全データを取得（ヘッダー行を含む）
+            all_records = worksheet.get_all_values()
+            
+            # ヘッダー行を除いた実際のデータ
+            data_rows = all_records[1:] if len(all_records) > 1 else []
+            
+            # 既存のデータと一致する行を探す
+            found_row_index = -1
+            current_count = 0 
+            
+            for i, row in enumerate(data_rows):
+                # 日付とタイプがあることを確認
+                if len(row) > 1 and row[0] == current_date_str and row[1] == final_VGTI:
+                    found_row_index = i + 2 # スプレッドシートの行番号 (ヘッダー+0始まりインデックス)
+                    # 既存の人数カウントを取得 (C列、インデックスは2)
+                    try:
+                        current_count = int(row[2]) 
+                    except (ValueError, IndexError):
+                        current_count = 0 
+                    break
+            
+            new_count = current_count + 1
+
+            # 書き込むデータ (ヘッダー: 日付, VGTIタイプ, 人数)
+            data_to_write = [
+                current_date_str, 
+                final_VGTI,
+                new_count 
+            ]
+
+            if found_row_index != -1:
+                # 既存の行を更新 (C列の人数だけ更新)
+                worksheet.update_cell(found_row_index, 3, new_count) # 行番号, 列番号(3はC列), 値
+                # st.success(f"診断結果（{final_VGTI}）の人数を更新しました！ (現在の人数: {new_count})") # この行を削除
+            else:
+                # 新しい行を追加
+                worksheet.append_row(data_to_write)
+                # st.success("診断結果をスプレッドシートに保存しました！") # この行を削除
+
+            st.session_state.result_logged = True
+            
+        except Exception as e:
+            st.warning(f"結果の記録に失敗しました。認証情報、スプレッドシートID、共有設定を確認してください。エラー: {e}")
+    # --- Google Sheetsへの結果書き込み処理 終わり ---
+
+
+    # --- 画像表示とボタンのCSS ---
     image_VGTI = {
         'RHFL': 'RHFL.png', 'RHFD': 'RHFD.png', 'RHBL': 'RHBL.png', 'REFL': 'REFL.png',
         'REFD': 'REFD.png', 'IHFL': 'IHFL.png', 'REBL': 'REBL.png', 'RHBD': 'RHBD.png',
@@ -113,10 +199,10 @@ else:
         'IEBL': 'IEBL.png', 'IEBD': 'IEBD.png', 'IEFD': 'IEFD.png', 'IHBD': 'IHBD.png'
     }
 
-    if VGTI in image_VGTI:
+    if final_VGTI in image_VGTI:
         st.markdown(f"""<div style="text-align: center;">
-        <img src="https://raw.githubusercontent.com/miku2846/honohonoVGTI/main/{image_VGTI[VGTI]}" width="300" />
-        <p>{VGTI}のイメージ</p></div>""", unsafe_allow_html=True)
+        <img src="https://raw.githubusercontent.com/miku2846/honohonoVGTI/main/{image_VGTI[final_VGTI]}" width="300" />
+        <p>{final_VGTI}のイメージ</p></div>""", unsafe_allow_html=True)
 
     st.markdown("""
         <style>
@@ -132,6 +218,6 @@ else:
     if st.button("もう一度ベジる🥦>>>"):
         st.session_state.step = 0
         st.session_state.VGTI = ""
-        st.session_state.answers = {}
+        st.session_state.answers_list = []
+        st.session_state.result_logged = False
         st.rerun()
-
