@@ -1,11 +1,40 @@
 import streamlit as st
 
-st.title("🍅 VGTI 診断 🍆")
+# --- 絵文字アニメーション用のCSS ---
+st.markdown(
+    """
+    <style>
+    .emoji {
+        display: inline-block; /* インライン要素をブロック要素のように扱いつつ、テキストの流れを維持 */
+    }
+
+    .wiggle {
+        animation: wiggle 0.5s infinite alternate; /* wiggleアニメーションを0.5秒間隔で無限に繰り返す */
+    }
+
+    @keyframes wiggle {
+        0% { transform: rotate(-5deg); }   /* 開始時: -5度回転 */
+        100% { transform: rotate(5deg); }  /* 終了時: 5度回転 */
+    }
+    </style>
+    """,
+    unsafe_allow_html=True, # HTMLタグを安全でないものとして許可（<style>タグを使うため必須）
+)
+
+# --- アニメーションする絵文字を含むタイトル ---
+st.markdown(
+    f'<h1 style="display: flex; align-items: center; justify-content: center;">'
+    f'<span class="emoji wiggle">🍅</span> '
+    f'VGTI 診断 '
+    f'<span class="emoji wiggle">🍆</span>'
+    f'</h1>',
+    unsafe_allow_html=True, # HTMLタグを安全でないものとして許可
+)
 
 # 質問と選択肢・結果の対応（[質問文, 選択肢リスト, 選択肢ごとのタイプ文字])
 questions = [
     ('普段の生活リズムについて教えてください。',
-     ['一日三食きちんと食べている', '食事の時間が不規則になりがち'],
+     ['1日3食きちんと食べている', '1日1食or2食になってしまう...(食事の時間が不規則になりがち)'],
      ['R', 'I']),
     ('食事のスタイルはどちらが多いですか？',
      ['家で作って食べる、または中食', '外食が多い'],
@@ -22,32 +51,50 @@ questions = [
 if 'step' not in st.session_state:
     st.session_state.step = 0
     st.session_state.VGTI = ""
+    st.session_state.answers = {} # 各質問の状態を保持するための辞書を初期化
 
 step = st.session_state.step
 
 if step < len(questions):
     q, options, codes = questions[step]
     st.subheader(f"Q{step + 1}. {q}")
-    choice = st.radio("選択してください", options, key=f"q{step}")
+        
+    # ここを変更！「選択してください」のダミー選択肢を削除
+    # display_options = ["選択してください"] + options は不要に
 
-    if st.button("次へ ▶"):
-        selected_index = options.index(choice)
-        st.session_state.VGTI += codes[selected_index]
+    # ユーザーが以前に選択した回答があれば、それを初期値にする
+    # なければ、st.radio のデフォルト挙動（リストの最初の要素が選択される）になる
+    default_index = 0
+    if f"q{step}" in st.session_state.answers:
+        try:
+            # 以前の選択肢のインデックスを直接使う
+            default_index = options.index(st.session_state.answers[f"q{step}"])
+        except ValueError:
+            default_index = 0
+
+    # ここを変更！display_options ではなく options を直接渡す
+    choice = st.radio("選択してください", options, index=default_index, key=f"q{step}_radio")
+
+   
+    if st.button("次へ ▶"): # ここを変更！条件分岐をシンプルに
+        # アスタリスクを除いた元の選択肢のテキストを使ってインデックスを取得
+        original_choice_text = choice.replace(" *", "")
+        selected_index_in_original_options = options.index(original_choice_text) # ここはそのまま
+        st.session_state.VGTI += codes[selected_index_in_original_options]
         st.session_state.step += 1
+        st.session_state.answers[f"q{step}"] = original_choice_text
         st.rerun()
 
-# 結果表示
+# 結果表示（省略。変更なし）
 else:
     VGTI = st.session_state.VGTI
     st.header(f"あなたのVGTIタイプは: {VGTI} 🌱")
 
-    # タイプ分け
     wao = {'RHFL', 'RHFD', 'RHBL', 'REFL'}
     ooo = {'REFD', 'IHFL', 'REBL', 'RHBD'}
     iine = {'IEFL', 'IHBL', 'REBD', 'IHFD'}
     eee = {'IEBL', 'IEBD', 'IEFD', 'IHBD'}
 
-    # 結果表示
     if VGTI in wao:
         st.success('ベジレベル★★★★\n1日3食食べていて素晴らしい！周りの人にも野菜摂取を勧めてみましょう！')
     elif VGTI in ooo:
@@ -59,11 +106,10 @@ else:
     else:
         st.error("ERROR: 不正な診断コードです")
 
-    # 画像
     image_VGTI = {
         'RHFL': 'RHFL.png', 'RHFD': 'RHFD.png', 'RHBL': 'RHBL.png', 'REFL': 'REFL.png',
         'REFD': 'REFD.png', 'IHFL': 'IHFL.png', 'REBL': 'REBL.png', 'RHBD': 'RHBD.png',
-        'IEFL': 'IEFL.png', 'IHBL': 'IHBL.png', 'REBD': 'IHFD.png', 'IHFD': 'IHFD.png',
+        'IEFL': 'IEFL.png', 'IHBL': 'IHBL.png', 'REBD': 'REBD.png', 'IHFD': 'IHFD.png',
         'IEBL': 'IEBL.png', 'IEBD': 'IEBD.png', 'IEFD': 'IEFD.png', 'IHBD': 'IHBD.png'
     }
 
@@ -72,16 +118,13 @@ else:
         <img src="https://raw.githubusercontent.com/miku2846/honohonoVGTI/main/{image_VGTI[VGTI]}" width="300" />
         <p>{VGTI}のイメージ</p></div>""", unsafe_allow_html=True)
 
-    # ---
-    # ここからボタンの右寄せに関する変更です
-    # CSSを使ってボタンを右寄せにする
     st.markdown("""
         <style>
         div.stButton > button {
             display: block;
             margin-left: auto;
             margin-right: 0;
-            width: fit-content; /* ボタンの幅に合わせて調整 */
+            width: fit-content;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -89,7 +132,6 @@ else:
     if st.button("もう一度ベジる🥦>>>"):
         st.session_state.step = 0
         st.session_state.VGTI = ""
+        st.session_state.answers = {}
         st.rerun()
-
-
 
