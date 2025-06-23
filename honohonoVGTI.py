@@ -63,7 +63,7 @@ else:
     image_VGTI = {
         'RHFL': 'RHFL.png', 'RHFD': 'RHFD.png', 'RHBL': 'RHBL.png', 'REFL': 'REFL.png',
         'REFD': 'REFD.png', 'IHFL': 'IHFL.png', 'REBL': 'REBL.png', 'RHBD': 'RHBD.png',
-        'IEFL': 'IEFL.png', 'IHBL': 'IHBL.png', 'REBD': 'REBD.png', 'IHFD': 'IHFD.png',
+        'IEFL': 'IEFL.png', 'IHBL': 'IHBL.png', 'REBD': 'IHFD.png', 'IHFD': 'IHFD.png',
         'IEBL': 'IEBL.png', 'IEBD': 'IEBD.png', 'IEFD': 'IEFD.png', 'IHBD': 'IHBD.png'
     }
 
@@ -72,14 +72,24 @@ else:
         <img src="https://raw.githubusercontent.com/miku2846/honohonoVGTI/main/{image_VGTI[VGTI]}" width="300" />
         <p>{VGTI}のイメージ</p></div>""", unsafe_allow_html=True)
 
-    # 再診断ボタンを右寄せで表示
-    col1, col2 = st.columns([9, 1])  # col1を広く、col2を狭く
-    with col2:
-        if st.button("もう一度ベジる🥦>>>"):
-            st.session_state.step = 0
-            st.session_state.VGTI = ""
-            st.rerun()
+    # ---
+    # ここからボタンの右寄せに関する変更です
+    # CSSを使ってボタンを右寄せにする
+    st.markdown("""
+        <style>
+        div.stButton > button {
+            display: block;
+            margin-left: auto;
+            margin-right: 0;
+            width: fit-content; /* ボタンの幅に合わせて調整 */
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
+    if st.button("もう一度ベジる🥦>>>"):
+        st.session_state.step = 0
+        st.session_state.VGTI = ""
+        st.rerun()
 
 
 
